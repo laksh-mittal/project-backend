@@ -3,6 +3,7 @@ const bodyParser = require("body-parser");
 const postgres = require("postgres");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const { initializeApp } = require("firebase/app");
 const {
   getDatabase,
@@ -19,6 +20,7 @@ require("dotenv").config();
 
 const app = express();
 const port = 3001;
+const saltRounds = 10;
 
 //POSTGRES CONFIG
 const { PGHOST, PGDATABASE, PGUSER, PGPASSWORD, ENDPOINT_ID } = process.env;
@@ -46,20 +48,35 @@ const sql = postgres(URL, { ssl: "require" });
 
 //DATABASE HELPER FUNCTIONS
 async function findUser(email, password) {
+  const hashedPassword = await bcrypt
+    .hash(password, saltRounds)
+    .then((hash) => {
+      return hash;
+    });
+
+  // console.log(hashedPassword);
+
   const user = await sql`
       select
         *
       from users
       where email = ${email}
-      and 
-      password = ${password}
     `;
 
   // const user = await get(child(ref(db), `users/` + email)).then((snapshot) => {
   //     return snapshot.val();
   // });
-
-  return user;
+  if (user.length == 0) {
+    return [];
+  } else {
+    const response = await bcrypt
+      .compare(password, user[0].password)
+      .then((result) => {
+        if (result == true) return user;
+        else return [];
+      });
+    return response;
+  }
 }
 
 async function findEmail(email) {
@@ -97,11 +114,17 @@ async function updatePreferences(email, brand, category) {
 }
 
 async function registerUser(email, password) {
+  const hashedPassword = await bcrypt
+    .hash(password, saltRounds)
+    .then((hash) => {
+      return hash;
+    });
+
   const user = await sql`
       insert into users
       (email, password)
       values
-      (${email},${password})
+      (${email},${hashedPassword})
       returning email, password
     `;
 
